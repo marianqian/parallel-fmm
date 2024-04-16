@@ -59,10 +59,9 @@ J. Kurzak and B. M. Pettitt. “Fast multipole methods for particle dynamics”.
 “A Massively Parallel Adaptive Fast Multipole Method on Heterogeneous Architectures”
 
 ### Codebase:
-- FMM Python Implementation for 2D Coulomb Particles: https://github.com/lbluque/fmm 
-- FMM Tutorial for Trees: https://github.com/barbagroup/FMM_tutorial 
+- FMM C++ Implementation parallelized with OpenMP: https://github.com/jrotheneder/FMM
 
-We plan to use the repos listed under the “Codebase” to help us implement a sequential C++ FMM, and then use the research papers to guide us in our parallelization efforts.
+We plan to use the repo listed under "Codebase" to gather data and measurements for sequential and OpenMP implementations. Then we plan to parallelize the codebase using CUDA instead of OpenMP, and choose one as an accelerant to use in conjunction with MPI for distributed memory. 
 
 
 
