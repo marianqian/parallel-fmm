@@ -89,33 +89,38 @@ The GHC machines with the NVIDIA GPUs are a good platform to test our code on be
 
 Since FMM is necessary due to the large problem sizes it is used on in practice, using the PSC machines and PSC GPU nodes makes sense since we will be able to see how well our solution scales on larger problem sizes.
 
+## Progress 
+So far, we have a sequential and OpenMP parallelized versions of the FMM. This FMM can be used in multiple configurations—for gravitational and Coulombic interactions, in 2D and 3D, and for uniform and non-uniform particle distributions. Additionally, we have begun parallelizing the FMM using CUDA instead of OpenMP, in hopes of choosing the better parallelization strategy to use in conjunction with MPI in the future. 
 
+Originally, we had planned to implement a sequential version of the FMM ourselves from scratch by rewriting existing python code for the algorithm in C++. However, it took us a while to understand exactly how FMM works in terms of the algorithmic and mathematical details. We had a hard time digesting the primary research paper we were going off of (A Massively Parallel Adaptive Fast Multipole Method on Heterogeneous Architectures)[https://cims.nyu.edu/gcl/papers/lashuk2013mpa.pdf], and had to read through many supplemental materials and watch videos in order to get a better understanding of how exactly FMMs work and how the formulas, algorithms and data structures are built to accomplish this. 
+
+When we finally started to write our sequential code, we soon realized that it would take a lot of time and effort to write modular and clean C++ code for implementing the FMM, when this was not even the main portion or intent of our project. We wanted to be able to focus on the real challenge, which was focusing on how to parallelize the FMM for distributed memory using MPI. Of course, parallelizing the FMM using OpenMP and CUDA would also be a significant portion of the project, but this parallelization is more straightforward than distributed memory parallelization due to the fairly obvious parallelizable portions of the algorithm. As such, we decided to pivot and use an existing C++ codebase that already implemented the FMM with OpenMP optimizations. We stripped it down to exclude any OpenMP directives and used that as our sequential code, and then put the OpenMP optimizations back in and used that as our OpenMP code.
+
+Now, our efforts will mainly be focused on optimizing the FMM using CUDA instead of OpenMP, and then incorporating MPI to parallelize it for distributed memory. Then, we plan to perform a thorough analysis on the performance benefits of our various parallelization strategies.
 
 ## Schedule
 
-### Sat, 4/6
-- Finish implementing a correct, sequential version of FMM using C++.
-- Outline a plan to use CUDA and OpenMP to take advantage of data parallelism within tree levels.
-### Wed, 4/13
-- Finish implementing shared memory parallelism (OpenMP and CUDA acceleration).
-- Record performance metrics on different problem sizes and particle distributions.
-- Outline a plan to use MPI to implement distributed memory parallelism.
-### Tues, 4/16
-Milestone Report DUE
+### Thur, 4/20
+- Finish setting up CUDA/test run code for CUDA.
+### Fri, 4/19
+- Finish implementing CUDA version of code. 
 ### Sat, 4/20
-- Finish incorporating MPI parallelization into implementation.
-- Record performance metrics on different problem sizes and particle distributions.
-- If speedup is not ideal, do performance debugging to identify bottlenecks.
+- Record performance metrics on OpenMP and make speedup graphs (include problem size and particle distribution sensitivity studies). 
+- Record performance metrics on CUDA and make speedup graphs (include problem size and particle distribution sensitivity studies). 
+- Create a detailed outline for MPI integration, following the paper. 
+### Mon, 4/22
+- Finish one iteration of MPI implementation on GHC machines.
+### Wed, 4/24
+- Finish incorporating MPI parallelization into implementation. 
+- Record performance metrics on MPI and (include problem size and particle distribution sensitivity studies).
 ### Sat, 4/27
-- Finish iterating on design.
-- - Collect and record performance metrics on PSC machines to see if the solution is scalable. If not, do performance debugging to identify bottlenecks.
+- If speedup is not ideal on GHC, do performance debugging to identify bottlenecks.
+- Collect and record performance metrics on PSC machines to see if the solution is scalable. If not, do performance debugging to identify bottlenecks.
+### Wed, 5/1
+- Finish iterating on algorithm design. 
 ### Sat, 5/4
 - Finish collecting all finalized performance metrics for the report.
-- - Finish report.
 ### Sun, 5/5
-Final Report DUE
+- Final Report DUE
 ### Mon, 5/6
-Poster Session DUE
-
-
-
+- Poster Session DUE
