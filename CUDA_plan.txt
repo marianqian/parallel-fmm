@@ -1,0 +1,6 @@
+Files to implement CUDA kernels in: 
+- fields.hpp: particleForces (Parallelized function for computation of all forces on all particles) – called directly by fmm_tree 
+- abstract_fmm_tree.hpp: evaluateParticleForces, evaluateParticlePotentialEnergies – called directly by an fmm_tree. Might be hard because evaluateParticleForces is not defined until in adaptive_fmm_tree.hpp or balanced_fmm_tree.hpp
+- balanced_fmm_tree.hpp and adaptive_fmm_tree.hpp: Within construction of the tree for upward and downward pass, has pragmas – pragma is within calling constructor of AdaptiveFmmTree and BalancedFmmTree 
+
+Can probably make kernels directly in these files for the listed functions; the data does not depend on other things outside the files because they are called by fmm_tree.cpp directly which is just evaluating the code 
