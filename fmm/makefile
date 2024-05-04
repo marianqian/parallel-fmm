@@ -3,11 +3,11 @@ EXT = cpp
 
 DEBUGFLAGS = -g -ggdb -O3 -ffast-math #-fno-inline
 OFLAGS = -O3 -ffast-math -fopenmp
-LIBS = -I/afs/andrew.cmu.edu/usr13/nvfeng/private/15418/fmm-parallel/gsl/include -L/afs/andrew.cmu.edu/usr13/nvfeng/private/15418/fmm-parallel/gsl/lib -lstdc++fs -lgsl -lgslcblas
+LIBS = -I /afs/andrew.cmu.edu/usr13/nvfeng/private/15418/parallel-fmm/gsl/include -L /afs/andrew.cmu.edu/usr13/nvfeng/private/15418/parallel-fmm/gsl/lib -lstdc++fs -lgsl -lgslcblas
 CXXFLAGS = -Wall -Wno-unknown-pragmas -fno-builtin -std=c++17 -pedantic
 
-TARGET = examples/minimal
-#TARGET = test/fmm_tree
+# TARGET = examples/minimal
+TARGET = test/fmm_tree
 DEPENDS = makefile $(TARGET).$(EXT) abstract_orthtree.hpp balanced_orthtree.hpp \
 		   vector.hpp abstract_fmm_tree.hpp balanced_fmm_tree.hpp series_expansion.hpp \
 		  multipole_expansion.hpp local_expansion.hpp \
