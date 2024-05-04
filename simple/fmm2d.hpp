@@ -7,8 +7,8 @@ File fmm2d.h is an include file for program fmm2d.c.
 #include <vector>
 
 #define BOX 1.0          /* Cubic simulation-box size */
-#define Npar  64000      /* # of charged particles */
-#define L 7              /* Max level of refinement = quadtree height */
+#define Npar  8          /* # of charged particles */
+#define L 4              /* Max level of refinement = quadtree height */
 #define P 6              /* Order of multipole & local expansions */
 #define NUM_THREADS 8    /* # of threads for OpenMP */
 #define Max_par 1000000  /* Array size for particles */

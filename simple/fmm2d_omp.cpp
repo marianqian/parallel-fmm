@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
     max_diff = diff>max_diff ? diff : max_diff;
   }
   error = (eng-eng_direct)/eng_direct;
-  
+
   printf("===== Parameters ================================\n");
   printf("Mode = openmp\nNUM_THREADS=%d\nNpar = %d\nL = %d\nP = %d\n", NUM_THREADS,Npar, L, P);
   printf("===== Validation ================================\n");
@@ -102,7 +102,7 @@ void mp_leaf() {
 
   /* Clear multipoles */
   omp_set_num_threads(NUM_THREADS);
-  #pragma omp parallel for schedule(static) private(c,a)
+  #pragma omp parallel for schedule(dynamic) private(a)
   for (c=c0[L]; c<c0[L]+nc; c++){
     for (a=0; a<=P; a++){
       cini(0.0,0.0,phi[c][a]);
@@ -110,7 +110,7 @@ void mp_leaf() {
   }
 
   /* Scan particles to add their multipoles */
-  #pragma omp parallel for schedule(static) private(j,b,a,c,cj,zjc,qz)
+  #pragma omp parallel for schedule(dynamic) private(a,b,c,cj,zjc,qz)
   for (j=0; j<Npar; j++) {
     for(b=0; b<2; b++){
       cj[b] = z[j][b]/rc;  /* Particle-to-cell mapping */
@@ -144,7 +144,7 @@ void upward() {
     /* Loop over mother cells at level l */
     // printf("c=[%d %d]\n",c0[l],c0[l]+nc);
     omp_set_num_threads(NUM_THREADS);
-    #pragma omp parallel for schedule(static) private(c,a,vc,vcd,cd,b,zdm,pz,zg,w,g)
+    #pragma omp parallel for schedule(dynamic) private(a,vc,vcd,cd,b,zdm,pz,zg,w,g)
     for (c=c0[l]; c<c0[l]+nc; c++) {
       for (a=0; a<=P; a++){
         cini(0.0,0.0,phi[c][a]);
@@ -185,6 +185,8 @@ void downward() {
   double rc,zdm[2],zg[2],w[2],zdi[2],lz[2],zi[2],zib[2],zia[2],zim[2],w0[2];
 
   nc = pow(4,1);  /* # of cells at quadtree level 1 */
+  omp_set_num_threads(NUM_THREADS);
+  #pragma omp parallel for schedule(dynamic) private(c,a)
   for (c=0; c<c0[1]+nc; c++)  /* Clear local expansion terms at levels 0 & 1 */
     for (a=0; a<=P; a++)
       cini(0.0,0.0,psi[c][a]);
@@ -197,7 +199,7 @@ void downward() {
 
     /* Local-to-local transformation from the mother */
     omp_set_num_threads(NUM_THREADS);
-    #pragma omp parallel for schedule(static) private(c,b,a,g,vc,cm,vcm,zdm,lz,zi,zib,zia,zim,w0)
+    #pragma omp parallel for schedule(dynamic) private(b,a,g,vc,cm,vcm,zdm,zg,w)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over daughter cells */
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Daughter's vector cell ID */
       for (b=0; b<2; b++) {
@@ -221,7 +223,7 @@ void downward() {
     } /* End for daughter cells c */
 
     /* Multipole-to-local transfomation from the interactive cells */
-    #pragma omp parallel for schedule(static) private(a,c,b,vc,vcb,vci,ci,zdi,lz,zi,zib,zim,zia,w0)
+    #pragma omp parallel for schedule(dynamic) private(a,b,vc,vce,vcb,vci,ci,zdi,lz,zi,zib,zim,zia,w0,w)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over cells c*/
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Vector cell ID */
       for (b=0; b<2; b++) {  /* Beginning & ending interactive-cell indices */
@@ -279,17 +281,6 @@ void nn_direct() {
   Direct calculation of the electrostatic potentials between the nearest-
   neighbor leaf cells, along with the evaluation of the local expansion.
 ------------------------------------------------------------------------------*/
-  // int nc,lc,j,k,a,b,c,c1;
-  // std::vector<int>vc(2);
-  // std::vector<int>vc1(2);
-  // std::vector<int>vcb(2);
-  // std::vector<int>vce(2);
-  // double rc,rjk;
-  // std::vector<double>zjc(2);
-  // std::vector<double>zjk(2);
-  // std::vector<double>cpot(2);
-  // std::vector<double>w(2);
-  // std::vector<double>za(2);
   int nc,lc,j,k,a,b,vc[2],c,vc1[2],c1,vcb[2],vce[2];
   double rc,zjc[2],zjk[2],rjk,cpot[2],w[2],za[2];
 
