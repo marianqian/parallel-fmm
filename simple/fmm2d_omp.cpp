@@ -6,6 +6,17 @@ Fast multipole method (FMM) algorithm in 2 dimensions.
 #include <math.h>
 #include <time.h>
 #include "fmm2d.hpp"
+#include <omp.h>
+
+std::vector<std::vector<double>> z;
+std::vector<double> q;
+std::vector<std::vector<std::vector<double>>> phi;
+std::vector<std::vector<std::vector<double>>> psi;
+std::vector<int> c0;
+std::vector<double> pot;
+std::vector<double> pot_direct;
+std::vector<int> head;
+std::vector<int> lscl;
 
 /*----------------------------------------------------------------------------*/
 int main(int argc, char **argv) {
@@ -30,16 +41,16 @@ int main(int argc, char **argv) {
     max_diff = diff>max_diff ? diff : max_diff;
   }
   error = (eng-eng_direct)/eng_direct;
+  
   printf("===== Parameters ================================\n");
-  printf("Mode = sequential\nNpar = %d\nL = %d\nP = %d\n", Npar, L, P);
-  printf("===== Max potential difference = %e =============\n",max_diff);
-  printf("===== Total FMM vs. direct energies & error =====\n");
-  printf("Total FMM = %e\nDirect Energies = %e\nError = %e\n",
-    eng,eng_direct,error);
+  printf("Mode = openmp\nNUM_THREADS=%d\nNpar = %d\nL = %d\nP = %d\n", NUM_THREADS,Npar, L, P);
+  printf("===== Validation ================================\n");
+  printf("Max potential difference = %e\nTotal FMM = %e\nDirect Energies = %e\nError = %e\n",
+    max_diff,eng,eng_direct,error);
   tfmm    = (t2-t1)/(double)CLOCKS_PER_SEC;
   tdirect = (t3-t2)/(double)CLOCKS_PER_SEC;
-  printf("===== FMM & direct CPU times ====================\n");
-  printf("FMM time = %.3f\nDirect CPU time = %.3f\n",tfmm,tdirect);
+  printf("===== Speed =====================================\n");
+  printf("FMM time = %e\nDirect CPU time = %e\n",tfmm,tdirect);
   printf("FMM is %.3f times faster than Direct CPU\n",(float)(tdirect/tfmm));
 
   return 0;
@@ -53,14 +64,28 @@ void initialize() {
 ------------------------------------------------------------------------------*/
   int j,b,l;
 
+  z = std::vector<std::vector<double>> (Max_par, std::vector<double>(2));
+  q = std::vector<double> (Max_par);
+  phi = std::vector<std::vector<std::vector<double>>> (Max_cell, std::vector<std::vector<double>>(Max_term, std::vector<double>(2)));
+  psi = std::vector<std::vector<std::vector<double>>> (Max_cell, std::vector<std::vector<double>>(Max_term, std::vector<double>(2)));
+  c0 = std::vector<int> (Max_level);
+  pot = std::vector<double> (Max_par);
+  pot_direct = std::vector<double> (Max_par);
+  head = std::vector<int> (Max_cell);
+  lscl = std::vector<int> (Max_par);
+
   /* Particle positions & charges */
   for (j=0; j<Npar; j++) {
-    for (b=0; b<2; b++) z[j][b] = rand()/(double)RAND_MAX*BOX;
+    for (b=0; b<2; b++){
+      z[j][b] = rand()/(double)RAND_MAX*BOX;
+    }
     q[j] = rand()/(double)RAND_MAX;
   }
 
   /* Cell-index offsets */
-  for (l=0; l<=L; l++) c0[l] = (pow(4,l)-1)/3;
+  for (l=0; l<=L; l++){
+    c0[l] = (pow(4,l)-1)/3;
+  }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -76,15 +101,24 @@ void mp_leaf() {
   rc = BOX/lc;    /* Leaf-cell length */
 
   /* Clear multipoles */
-  for (c=c0[L]; c<c0[L]+nc; c++)
-    for (a=0; a<=P; a++)
+  omp_set_num_threads(NUM_THREADS);
+  #pragma omp parallel for schedule(static) private(c,a)
+  for (c=c0[L]; c<c0[L]+nc; c++){
+    for (a=0; a<=P; a++){
       cini(0.0,0.0,phi[c][a]);
+    }
+  }
 
   /* Scan particles to add their multipoles */
+  #pragma omp parallel for schedule(static) private(j,b,a,c,cj,zjc,qz)
   for (j=0; j<Npar; j++) {
-    for(b=0; b<2; b++) cj[b] = z[j][b]/rc;  /* Particle-to-cell mapping */
+    for(b=0; b<2; b++){
+      cj[b] = z[j][b]/rc;  /* Particle-to-cell mapping */
+    }
     c = c0[L]+cj[0]*lc+cj[1];  /* Serial cell index */
-    for (b=0; b<2; b++) zjc[b] = z[j][b]-(cj[b]+0.5)*rc;
+    for (b=0; b<2; b++){
+      zjc[b] = z[j][b]-(cj[b]+0.5)*rc;
+    }
     cini(q[j],0.0,qz);
     cadd(1.0,phi[c][0],1.0,qz,phi[c][0]);
     for (a=1; a<=P; a++) {
@@ -108,30 +142,35 @@ void upward() {
     lc = pow(2,l);  /* # of cells in each direction */
     rc = BOX/lc;  /* Cell length */
     /* Loop over mother cells at level l */
+    // printf("c=[%d %d]\n",c0[l],c0[l]+nc);
+    omp_set_num_threads(NUM_THREADS);
+    #pragma omp parallel for schedule(static) private(c,a,vc,vcd,cd,b,zdm,pz,zg,w,g)
     for (c=c0[l]; c<c0[l]+nc; c++) {
-      for (a=0; a<=P; a++)
+      for (a=0; a<=P; a++){
         cini(0.0,0.0,phi[c][a]);
+      }
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc; /* Mother's vector cell ID */
       /* Loop over 4 daughter cells at level l+1 */
-      for (vcd[0]=2*vc[0]; vcd[0]<=2*vc[0]+1; (vcd[0])++)
-      for (vcd[1]=2*vc[1]; vcd[1]<=2*vc[1]+1; (vcd[1])++) {
-        cd = c0[l+1]+vcd[0]*(2*lc)+vcd[1]; /* Daughter's serial cell index */
-        for (b=0; b<2; b++)
-          zdm[b] = (vcd[b]+0.5)*(rc/2)-(vc[b]+0.5)*rc;  /* Zdaughter-Zmother */
-        cadd(1.0,phi[c][0],1.0,phi[cd][0],phi[c][0]);
-        smul(phi[cd][0],1.0,pz);
-        for (a=1; a<=P; a++) {
-          cmul(pz,zdm,pz);
-          cadd(1.0,phi[c][a],-1.0/a,pz,phi[c][a]);
-          for (g=0; g<=a-1; g++) {
-            if (g == 0)
-              cini(1.0,0.0,zg);
-            else
-              cmul(zg,zdm,zg);
-            cmul(phi[cd][a-g],zg,w);
-            cadd(1.0,phi[c][a],comb(a-1,a-g-1),w,phi[c][a]);
-          }
-        } /* End for multipole terms a */
+      for (vcd[0]=2*vc[0]; vcd[0]<=2*vc[0]+1;(vcd[0])++){
+        for (vcd[1]=2*vc[1]; vcd[1]<=2*vc[1]+1; (vcd[1])++) {
+          cd = c0[l+1]+vcd[0]*(2*lc)+vcd[1]; /* Daughter's serial cell index */
+          for (b=0; b<2; b++)
+            zdm[b] = (vcd[b]+0.5)*(rc/2)-(vc[b]+0.5)*rc;  /* Zdaughter-Zmother */
+          cadd(1.0,phi[c][0],1.0,phi[cd][0],phi[c][0]);
+          smul(phi[cd][0],1.0,pz);
+          for (a=1; a<=P; a++) {
+            cmul(pz,zdm,pz);
+            cadd(1.0,phi[c][a],-1.0/a,pz,phi[c][a]);
+            for (g=0; g<=a-1; g++) {
+              if (g == 0)
+                cini(1.0,0.0,zg);
+              else
+                cmul(zg,zdm,zg);
+              cmul(phi[cd][a-g],zg,w);
+              cadd(1.0,phi[c][a],comb(a-1,a-g-1),w,phi[c][a]);
+            }
+          } /* End for multipole terms a */
+        } 
       } /* End for daughter cells vcd */
     } /* End for mother cells c */
   } /* End for quadtree levels l */
@@ -157,12 +196,17 @@ void downward() {
     rc = BOX/lc;    /* Cell length */
 
     /* Local-to-local transformation from the mother */
+    omp_set_num_threads(NUM_THREADS);
+    #pragma omp parallel for schedule(static) private(c,b,a,g,vc,cm,vcm,zdm,lz,zi,zib,zia,zim,w0)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over daughter cells */
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Daughter's vector cell ID */
-      for (b=0; b<2; b++) vcm[b] = vc[b]/2;  /* Mother's vector cell ID */
+      for (b=0; b<2; b++) {
+        vcm[b] = vc[b]/2; /* Mother's vector cell ID */
+      }
       cm = c0[l-1]+vcm[0]*(lc/2)+vcm[1];  /* Mother's serial cell ID */
-      for (b=0; b<2; b++)
+      for (b=0; b<2; b++){
         zdm[b] = (vc[b]+0.5)*rc-(vcm[b]+0.5)*(2*rc);  /* Zdaughter-Zmother */
+      }
       for (a=0; a<=P; a++) {
         cini(0.0,0.0,psi[c][a]);
         for (g=0; g<=P-a; g++) {
@@ -177,6 +221,7 @@ void downward() {
     } /* End for daughter cells c */
 
     /* Multipole-to-local transfomation from the interactive cells */
+    #pragma omp parallel for schedule(static) private(a,c,b,vc,vcb,vci,ci,zdi,lz,zi,zib,zim,zia,w0)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over cells c*/
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Vector cell ID */
       for (b=0; b<2; b++) {  /* Beginning & ending interactive-cell indices */
@@ -186,44 +231,45 @@ void downward() {
         vce[b] = vce[b]<lc ? vce[b] : lc-1;
       }
       /* Loop over cells vci[] within mother's nearest neighbor */
-      for (vci[0]=vcb[0]; vci[0]<=vce[0]; (vci[0])++)
-      for (vci[1]=vcb[1]; vci[1]<=vce[1]; (vci[1])++) {
-        /* Exclude daughter's nearest neighbors */
-        if ( (vci[0]-vc[0]<-1)||(vci[0]-vc[0]>1)||
-             (vci[1]-vc[1]<-1)||(vci[1]-vc[1]>1) ) {
-          ci = c0[l]+vci[0]*lc+vci[1];  /* Serial ID of interactive cell */
-          for (b=0; b<2; b++)
-            zdi[b] = (vc[b]-vci[b])*rc;  /* Zdaughter-Zinteractive */
-          clgn(zdi,lz);
-          cmul(phi[ci][0],lz,w);
-          cadd(1.0,psi[c][0],1.0,w,psi[c][0]);
-          cinv(zdi,zi);
-          cini(1.0,0.0,zib);
-          for (b=1; b<=P; b++) {
-            cmul(zib,zi,zib);
-            cmul(phi[ci][b],zib,w);
+      for (vci[0]=vcb[0]; vci[0]<=vce[0]; (vci[0])++){
+        for (vci[1]=vcb[1]; vci[1]<=vce[1]; (vci[1])++) {
+          /* Exclude daughter's nearest neighbors */
+          if ( (vci[0]-vc[0]<-1)||(vci[0]-vc[0]>1)||
+              (vci[1]-vc[1]<-1)||(vci[1]-vc[1]>1) ) {
+            ci = c0[l]+vci[0]*lc+vci[1];  /* Serial ID of interactive cell */
+            for (b=0; b<2; b++){
+              zdi[b] = (vc[b]-vci[b])*rc;  /* Zdaughter-Zinteractive */
+            }
+            clgn(zdi,lz);
+            cmul(phi[ci][0],lz,w);
             cadd(1.0,psi[c][0],1.0,w,psi[c][0]);
-          }
-          smul(zi,-1.0,zim);
-          cini(1.0,0.0,zia);
-          for (a=1; a<=P; a++) {
-            cmul(zia,zim,zia);
-            cmul(phi[ci][0],zia,w);
-            cadd(1.0,psi[c][a],-1.0/a,w,psi[c][a]);
-            cini(0.0,0.0,w0);
+            cinv(zdi,zi);
             cini(1.0,0.0,zib);
             for (b=1; b<=P; b++) {
               cmul(zib,zi,zib);
               cmul(phi[ci][b],zib,w);
-              cadd(1.0,w0,comb(a+b-1,b-1),w,w0);
+              cadd(1.0,psi[c][0],1.0,w,psi[c][0]);
             }
-            cmul(zia,w0,w0);
-            cadd(1.0,psi[c][a],1.0,w0,psi[c][a]);
-          } /* End for local-expansion terms a */
-        } /* End if not daughter's nearest neighbor */
-      } /* End for interactive cells vci[] */
+            smul(zi,-1.0,zim);
+            cini(1.0,0.0,zia);
+            for (a=1; a<=P; a++) {
+              cmul(zia,zim,zia);
+              cmul(phi[ci][0],zia,w);
+              cadd(1.0,psi[c][a],-1.0/a,w,psi[c][a]);
+              cini(0.0,0.0,w0);
+              cini(1.0,0.0,zib);
+              for (b=1; b<=P; b++) {
+                cmul(zib,zi,zib);
+                cmul(phi[ci][b],zib,w);
+                cadd(1.0,w0,comb(a+b-1,b-1),w,w0);
+              }
+              cmul(zia,w0,w0);
+              cadd(1.0,psi[c][a],1.0,w0,psi[c][a]);
+            } /* End for local-expansion terms a */
+          } /* End if not daughter's nearest neighbor */
+        } /* End for interactive cells vci[] */
+      }
     } /* End for cells c */
-
   } /* End for quadtree level l */
 }
 
@@ -233,6 +279,17 @@ void nn_direct() {
   Direct calculation of the electrostatic potentials between the nearest-
   neighbor leaf cells, along with the evaluation of the local expansion.
 ------------------------------------------------------------------------------*/
+  // int nc,lc,j,k,a,b,c,c1;
+  // std::vector<int>vc(2);
+  // std::vector<int>vc1(2);
+  // std::vector<int>vcb(2);
+  // std::vector<int>vce(2);
+  // double rc,rjk;
+  // std::vector<double>zjc(2);
+  // std::vector<double>zjk(2);
+  // std::vector<double>cpot(2);
+  // std::vector<double>w(2);
+  // std::vector<double>za(2);
   int nc,lc,j,k,a,b,vc[2],c,vc1[2],c1,vcb[2],vce[2];
   double rc,zjc[2],zjk[2],rjk,cpot[2],w[2],za[2];
 
@@ -324,7 +381,8 @@ void all_direct() {
   All-pair direct calculation of the electrostatic potential.
 ------------------------------------------------------------------------------*/
   int j,k,a;
-  double zjk[2],rjk,pot_jk;
+  double rjk,pot_jk, zjk[2];
+  // std::vector<double>zjk(2);
 
   /* All-pair calculation of the electrostatic potentials */
   for (j=0; j<Npar; j++)
@@ -345,4 +403,62 @@ void all_direct() {
   for (j=0; j<Npar; j++)
     eng_direct += q[j]*pot_direct[j];
   eng_direct *= 0.5;
+}
+
+/* Complex-arithmetic functions */
+void cadd(double s, double* a, double t, double* b, double* c){  /* C = sA+tB */
+  c[0] = s*a[0]+t*b[0]; c[1] = s*a[1]+t*b[1];
+}
+void cadd(double s, std::vector<double>& a, double t, double* b, std::vector<double>& c){  /* C = sA+tB */
+  c[0] = s*a[0]+t*b[0]; c[1] = s*a[1]+t*b[1];
+}
+void cadd(double s, std::vector<double>& a, double t, std::vector<double>& b, std::vector<double>& c){  /* C = sA+tB */
+  c[0] = s*a[0]+t*b[0]; c[1] = s*a[1]+t*b[1];
+}
+void smul(double* a, double s, double* c){  /* C = sA */
+  c[0] = s*a[0]; c[1] = s*a[1];
+}
+void smul(std::vector<double>& a, double s, double* c){  /* C = sA */
+  c[0] = s*a[0]; c[1] = s*a[1];
+}
+void cmul(double* a, double* b, double* c){  /* C = AB */
+  double w[2];
+  w[0] = a[0]*b[0]-a[1]*b[1];
+  w[1] = a[0]*b[1]+a[1]*b[0];
+  c[0] = w[0]; c[1] = w[1];
+}
+void cmul(std::vector<double>& a, double* b, double* c){  /* C = AB */
+  double w[2];
+  w[0] = a[0]*b[0]-a[1]*b[1];
+  w[1] = a[0]*b[1]+a[1]*b[0];
+  c[0] = w[0]; c[1] = w[1];
+}
+void cinv(double* a, double* ai) {  /* AI = 1/A */
+  double a2i;
+  a2i = 1.0/(a[0]*a[0]+a[1]*a[1]);
+  ai[0] =  a[0]*a2i;
+  ai[1] = -a[1]*a2i;
+}
+void clgn(double* a, double* l){  /* L = log(A) */
+  l[0] = log(sqrt(a[0]*a[0]+a[1]*a[1])); l[1] = atan(a[1]/a[0]);
+}
+void cini(double s, double t, double* a){  /* A = s+it */
+  a[0] = s; a[1] = t;
+}
+void cini(double s, double t, std::vector<double>& a){  /* A = s+it */
+  a[0] = s; a[1] = t;
+}
+
+
+/* Combinatorics functions */
+int fact(int n) {
+  int i,val;
+  if (n == 0)
+    val = 1;
+  else
+    for (val = 1,i=1; i<=n; i++) val *= i;
+  return val;
+}
+int comb(int n,int k) {
+  return fact(n)/fact(k)/fact(n-k);
 }
