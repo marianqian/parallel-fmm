@@ -5,7 +5,7 @@ Fast multipole method (FMM) algorithm in 2 dimensions.
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
-#include "fmm2d.hpp"
+#include "fmm2d_omp.hpp"
 #include <omp.h>
 
 std::vector<std::vector<double>> z;
@@ -64,15 +64,15 @@ void initialize() {
 ------------------------------------------------------------------------------*/
   int j,b,l;
 
-  z = std::vector<std::vector<double>> (Max_par, std::vector<double>(2));
-  q = std::vector<double> (Max_par);
+  z = std::vector<std::vector<double>> (Npar, std::vector<double>(2));
+  q = std::vector<double> (Npar);
   phi = std::vector<std::vector<std::vector<double>>> (Max_cell, std::vector<std::vector<double>>(Max_term, std::vector<double>(2)));
   psi = std::vector<std::vector<std::vector<double>>> (Max_cell, std::vector<std::vector<double>>(Max_term, std::vector<double>(2)));
-  c0 = std::vector<int> (Max_level);
-  pot = std::vector<double> (Max_par);
-  pot_direct = std::vector<double> (Max_par);
+  c0 = std::vector<int> (L);
+  pot = std::vector<double> (Npar);
+  pot_direct = std::vector<double> (Npar);
   head = std::vector<int> (Max_cell);
-  lscl = std::vector<int> (Max_par);
+  lscl = std::vector<int> (Npar);
 
   /* Particle positions & charges */
   for (j=0; j<Npar; j++) {
@@ -102,7 +102,7 @@ void mp_leaf() {
 
   /* Clear multipoles */
   omp_set_num_threads(NUM_THREADS);
-  #pragma omp parallel for schedule(dynamic) private(a)
+  #pragma omp parallel for schedule(static) private(a)
   for (c=c0[L]; c<c0[L]+nc; c++){
     for (a=0; a<=P; a++){
       cini(0.0,0.0,phi[c][a]);
@@ -110,7 +110,7 @@ void mp_leaf() {
   }
 
   /* Scan particles to add their multipoles */
-  #pragma omp parallel for schedule(dynamic) private(a,b,c,cj,zjc,qz)
+  #pragma omp parallel for schedule(static) private(a,b,c,cj,zjc,qz)
   for (j=0; j<Npar; j++) {
     for(b=0; b<2; b++){
       cj[b] = z[j][b]/rc;  /* Particle-to-cell mapping */
@@ -154,8 +154,9 @@ void upward() {
       for (vcd[0]=2*vc[0]; vcd[0]<=2*vc[0]+1;(vcd[0])++){
         for (vcd[1]=2*vc[1]; vcd[1]<=2*vc[1]+1; (vcd[1])++) {
           cd = c0[l+1]+vcd[0]*(2*lc)+vcd[1]; /* Daughter's serial cell index */
-          for (b=0; b<2; b++)
+          for (b=0; b<2; b++){
             zdm[b] = (vcd[b]+0.5)*(rc/2)-(vc[b]+0.5)*rc;  /* Zdaughter-Zmother */
+          }
           cadd(1.0,phi[c][0],1.0,phi[cd][0],phi[c][0]);
           smul(phi[cd][0],1.0,pz);
           for (a=1; a<=P; a++) {
@@ -186,7 +187,7 @@ void downward() {
 
   nc = pow(4,1);  /* # of cells at quadtree level 1 */
   omp_set_num_threads(NUM_THREADS);
-  #pragma omp parallel for schedule(dynamic) private(c,a)
+  #pragma omp parallel for schedule(static) private(c,a)
   for (c=0; c<c0[1]+nc; c++)  /* Clear local expansion terms at levels 0 & 1 */
     for (a=0; a<=P; a++)
       cini(0.0,0.0,psi[c][a]);
@@ -199,7 +200,7 @@ void downward() {
 
     /* Local-to-local transformation from the mother */
     omp_set_num_threads(NUM_THREADS);
-    #pragma omp parallel for schedule(dynamic) private(b,a,g,vc,cm,vcm,zdm,zg,w)
+    #pragma omp parallel for schedule(static) private(b,a,g,vc,cm,vcm,zdm,zg,w)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over daughter cells */
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Daughter's vector cell ID */
       for (b=0; b<2; b++) {
@@ -223,7 +224,7 @@ void downward() {
     } /* End for daughter cells c */
 
     /* Multipole-to-local transfomation from the interactive cells */
-    #pragma omp parallel for schedule(dynamic) private(a,b,vc,vce,vcb,vci,ci,zdi,lz,zi,zib,zim,zia,w0,w)
+    #pragma omp parallel for schedule(static) private(a,b,vc,vce,vcb,vci,ci,zdi,lz,zi,zib,zim,zia,w0,w)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over cells c*/
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Vector cell ID */
       for (b=0; b<2; b++) {  /* Beginning & ending interactive-cell indices */
@@ -372,8 +373,7 @@ void all_direct() {
   All-pair direct calculation of the electrostatic potential.
 ------------------------------------------------------------------------------*/
   int j,k,a;
-  double rjk,pot_jk, zjk[2];
-  // std::vector<double>zjk(2);
+  double rjk, zjk[2];
 
   /* All-pair calculation of the electrostatic potentials */
   for (j=0; j<Npar; j++)

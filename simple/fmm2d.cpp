@@ -6,41 +6,65 @@ Fast multipole method (FMM) algorithm in 2 dimensions.
 #include <math.h>
 #include <time.h>
 #include "fmm2d.hpp"
+#include <omp.h>
 
 /*----------------------------------------------------------------------------*/
 int main(int argc, char **argv) {
 /*----------------------------------------------------------------------------*/
   int j;
   double diff,max_diff = 0.0,error;
-  clock_t t1,t2,t3;
+  double tfmm1;
 
+  clock_t t1 = clock();
   initialize();  /* Randomly generate particle positions & charges */
-  t1 = clock();
-  mp_leaf();  /* Compute multipoles at the leaf cells */
-  upward();  /* Upward pass to compute multipoles at all quadtree levels */
-  downward();  /* Downward pass to compute local-expansion terms */
-  nn_direct();  /* Evaluate potentials at all particle positions */
-  t2 = clock();
+  clock_t t2 = clock();
   all_direct();  /* All-pairs direct evaluation of potentials for validation */
-  t3 = clock();
+  clock_t t3 = clock();
 
-  for (j=0; j<Npar; j++) {
-    diff = (pot[j]-pot_direct[j])/pot_direct[j];
-    diff = diff>0 ? diff : -diff;
-    max_diff = diff>max_diff ? diff : max_diff;
-  }
-  error = (eng-eng_direct)/eng_direct;
+  double tinit = (t2-t1)/(double)CLOCKS_PER_SEC;
+  double tdirect = (t3-t2)/(double)CLOCKS_PER_SEC;
+
   printf("===== Parameters ================================\n");
-  printf("Mode = sequential\nNpar = %d\nL = %d\nP = %d\n", Npar, L, P);
-  printf("===== Max potential difference = %e =============\n",max_diff);
-  printf("===== Total FMM vs. direct energies & error =====\n");
-  printf("Total FMM = %e\nDirect Energies = %e\nError = %e\n",
-    eng,eng_direct,error);
-  tfmm    = (t2-t1)/(double)CLOCKS_PER_SEC;
-  tdirect = (t3-t2)/(double)CLOCKS_PER_SEC;
-  printf("===== FMM & direct CPU times ====================\n");
-  printf("FMM time = %.3f\nDirect CPU time = %.3f\n",tfmm,tdirect);
-  printf("FMM is %.3f times faster than Direct CPU\n",(float)(tdirect/tfmm));
+  printf("Mode = openmp\nNpar = %d\nL = %d\nP = %d\n",Npar, L, P);
+
+  for(int NUM_THREADS = 1; NUM_THREADS <= 8; NUM_THREADS*=2){
+    clock_t t4 = clock();
+    mp_leaf(NUM_THREADS);  /* Compute multipoles at the leaf cells */
+    clock_t t5 = clock();
+    upward(NUM_THREADS);  /* Upward pass to compute multipoles at all quadtree levels */
+    clock_t t6 = clock();
+    downward(NUM_THREADS);  /* Downward pass to compute local-expansion terms */
+    clock_t t7 = clock();
+    nn_direct(NUM_THREADS);  /* Evaluate potentials at all particle positions */
+    clock_t t8 = clock();
+
+    tfmm = (t8-t4)/(double)CLOCKS_PER_SEC;
+    if (NUM_THREADS == 1) tfmm1 = tfmm;
+
+    for (j=0; j<Npar; j++) {
+      diff = (pot[j]-pot_direct[j])/pot_direct[j];
+      diff = diff>0 ? diff : -diff;
+      max_diff = diff>max_diff ? diff : max_diff;
+    }
+
+    error = (eng-eng_direct)/eng_direct;
+
+    printf("===== NUM_THREADS=%d=================================================\n", NUM_THREADS);
+    printf("===== Validation ================================\n");
+    printf("Max potential difference = %e\nTotal FMM = %e\nDirect Energies = %e\nError = %e\n",
+      max_diff,eng,eng_direct,error);
+    printf("===== Speed =====================================\n");
+    printf("FMM time = %.3f\nDirect CPU time = %.3f\n",tfmm,tdirect);
+    printf("FMM is %.3f times faster than Direct CPU\n",tdirect/tfmm);
+    printf("Init time = %.3f\nComp time = %.3f\n",tinit,tfmm);
+    printf("Total Speedup = %.3f\nComp Speedup = %.3f\n",(tinit+tfmm1)/(tinit+tfmm),tfmm1/tfmm);
+    printf("===== Times =====================================\n");
+    printf("mp_leaf time = %e\nupward time = %e\ndownward time = %e\nn_direct time = %e\n",
+            (t5-t4)/(double)CLOCKS_PER_SEC,
+            (t6-t5)/(double)CLOCKS_PER_SEC,
+            (t7-t6)/(double)CLOCKS_PER_SEC,
+            (t8-t7)/(double)CLOCKS_PER_SEC);
+  }
 
   return 0;
 }
@@ -64,7 +88,7 @@ void initialize() {
 }
 
 /*----------------------------------------------------------------------------*/
-void mp_leaf() {
+void mp_leaf(int NUM_THREADS) {
 /*------------------------------------------------------------------------------
   Computes multipoles for all cells at the leaf level.
 ------------------------------------------------------------------------------*/
@@ -76,11 +100,15 @@ void mp_leaf() {
   rc = BOX/lc;    /* Leaf-cell length */
 
   /* Clear multipoles */
-  for (c=c0[L]; c<c0[L]+nc; c++)
+  omp_set_num_threads(NUM_THREADS);
+  #pragma omp parallel for schedule(dynamic) private(a)
+  for (c=c0[L]; c<c0[L]+nc; c++){
     for (a=0; a<=P; a++)
       cini(0.0,0.0,phi[c][a]);
+  }
 
   /* Scan particles to add their multipoles */
+  #pragma omp parallel for schedule(dynamic) private(a,b,c,cj,zjc,qz)
   for (j=0; j<Npar; j++) {
     for(b=0; b<2; b++) cj[b] = z[j][b]/rc;  /* Particle-to-cell mapping */
     c = c0[L]+cj[0]*lc+cj[1];  /* Serial cell index */
@@ -95,7 +123,7 @@ void mp_leaf() {
 }
 
 /*----------------------------------------------------------------------------*/
-void upward() {
+void upward(int NUM_THREADS) {
 /*------------------------------------------------------------------------------
   Upward pass to compute multipoles for all cells at all quadtree levels.
 ------------------------------------------------------------------------------*/
@@ -108,6 +136,8 @@ void upward() {
     lc = pow(2,l);  /* # of cells in each direction */
     rc = BOX/lc;  /* Cell length */
     /* Loop over mother cells at level l */
+    omp_set_num_threads(NUM_THREADS);
+    #pragma omp parallel for schedule(dynamic) private(a,vc,vcd,cd,b,zdm,pz,zg,w,g)
     for (c=c0[l]; c<c0[l]+nc; c++) {
       for (a=0; a<=P; a++)
         cini(0.0,0.0,phi[c][a]);
@@ -138,7 +168,7 @@ void upward() {
 }
 
 /*----------------------------------------------------------------------------*/
-void downward() {
+void downward(int NUM_THREADS) {
 /*------------------------------------------------------------------------------
   Downward pass to compute local-expansion terms for all cells at all levels.
 ------------------------------------------------------------------------------*/
@@ -146,6 +176,8 @@ void downward() {
   double rc,zdm[2],zg[2],w[2],zdi[2],lz[2],zi[2],zib[2],zia[2],zim[2],w0[2];
 
   nc = pow(4,1);  /* # of cells at quadtree level 1 */
+  omp_set_num_threads(NUM_THREADS);
+  #pragma omp parallel for schedule(dynamic) private(a)
   for (c=0; c<c0[1]+nc; c++)  /* Clear local expansion terms at levels 0 & 1 */
     for (a=0; a<=P; a++)
       cini(0.0,0.0,psi[c][a]);
@@ -157,6 +189,8 @@ void downward() {
     rc = BOX/lc;    /* Cell length */
 
     /* Local-to-local transformation from the mother */
+    omp_set_num_threads(NUM_THREADS);
+    #pragma omp parallel for schedule(dynamic) private(b,a,g,vc,cm,vcm,zdm,zg,w)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over daughter cells */
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Daughter's vector cell ID */
       for (b=0; b<2; b++) vcm[b] = vc[b]/2;  /* Mother's vector cell ID */
@@ -177,6 +211,7 @@ void downward() {
     } /* End for daughter cells c */
 
     /* Multipole-to-local transfomation from the interactive cells */
+    #pragma omp parallel for schedule(dynamic) private(a,b,vc,vce,vcb,vci,ci,zdi,lz,zi,zib,zim,zia,w0,w)
     for (c=c0[l]; c<c0[l]+nc; c++) {  /* Loop over cells c*/
       vc[0] = (c-c0[l])/lc; vc[1] = (c-c0[l])%lc;  /* Vector cell ID */
       for (b=0; b<2; b++) {  /* Beginning & ending interactive-cell indices */
@@ -228,7 +263,7 @@ void downward() {
 }
 
 /*----------------------------------------------------------------------------*/
-void nn_direct() {
+void nn_direct(int NUM_THREADS) {
 /*------------------------------------------------------------------------------
   Direct calculation of the electrostatic potentials between the nearest-
   neighbor leaf cells, along with the evaluation of the local expansion.
@@ -324,7 +359,7 @@ void all_direct() {
   All-pair direct calculation of the electrostatic potential.
 ------------------------------------------------------------------------------*/
   int j,k,a;
-  double zjk[2],rjk,pot_jk;
+  double zjk[2],rjk;
 
   /* All-pair calculation of the electrostatic potentials */
   for (j=0; j<Npar; j++)
