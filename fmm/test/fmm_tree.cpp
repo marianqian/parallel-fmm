@@ -22,7 +22,7 @@ using namespace fmm::fields;
 
 int main(int argc, char *argv[]) {
 
-    size_t N = ceil(1.5*pow(10,6));
+    size_t N = ceil(1.5*pow(10,5));
     const size_t items_per_leaf = 2000;
     const size_t d = 3;
     const double eps = 1E-3; 

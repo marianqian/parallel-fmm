@@ -131,33 +131,18 @@ std::vector<Vector_<d>> particleForces(const std::vector<PointSource_<d>>& sourc
         Vector_<d> particle_force{0};  // Force on part. i by all j < i
 
         for(std::size_t j = 0; j < i; ++j) {
-
-            Vector_<d> temp_force 
-                = Qi * forcefield<d, grav, false>(sources[j], eval_point, eps);
-
+            Vector_<d> temp_force = Qi * forcefield<d, grav, false>(sources[j], eval_point, eps);
             particle_force += temp_force; 
-
             for(unsigned short k = 0; k < d; ++k) {
-
                 #pragma omp atomic
                 particle_forces[j][k] -= temp_force[k]; 
             }
-            
         }
-
-//      for(std::size_t j = i+1; j < N; ++j) {
-
-//          Vector_<d> temp_force 
-//              = Qi * forcefield<d, grav, false>(sources[j], eval_point, eps);
-
-//          particle_force += temp_force; 
-//      }
 
         for(unsigned short k = 0; k < d; ++k) {
             #pragma omp atomic
             particle_forces[i][k] += particle_force[k]; 
         }
-//      particle_forces[i] = particle_force;  
 }
 
     return particle_forces; 

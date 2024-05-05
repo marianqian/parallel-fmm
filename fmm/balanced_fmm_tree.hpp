@@ -145,60 +145,62 @@ BalancedFmmTree<d, field_type>::BalancedFmmTree(
     ); 
 
     // Upward pass: Form expansions at leaves and shift to parents
-    #pragma omp parallel for
-    for(std::size_t i = 0; i < n_leaves; ++i) { 
-
-        FmmLeaf& leaf = this->leaves[i];
-        leaf.multipole_expansion = ME(leaf.center, this->order, *leaf.sources);
-
+    #pragma omp parallel 
+    {
+        #pragma omp for schedule(static)
+        for(std::size_t i = 0; i < n_leaves; ++i) { 
+            FmmLeaf& leaf = this->leaves[i];
+            leaf.multipole_expansion = ME(leaf.center, this->order, *leaf.sources);
+        }
     }
+    
 
     for(unsigned depth = this->height-1; depth > 1; --depth) {
-
         std::size_t n_nodes_at_depth = std::pow(AOT::n_children, depth); 
         std::size_t offset = (std::pow(AOT::n_children, depth) - 1) 
             / (AOT::n_children - 1);
          
-        #pragma omp parallel for 
-        for(std::size_t i = 0; i < n_nodes_at_depth; i++) {
-
-            FmmNode& node = nodes[offset + i]; 
-            std::vector<const ME*> children_expansions;
-
-            for(BaseNode* child : node.children) {
-                children_expansions.push_back(
-                        &(static_cast<FmmNode*>(child)->multipole_expansion)
-                ); 
+        #pragma omp parallel 
+        {
+            #pragma omp for schedule(static)
+            for(std::size_t i = 0; i < n_nodes_at_depth; i++) {
+                FmmNode& node = nodes[offset + i]; 
+                std::vector<const ME*> children_expansions;
+                for(BaseNode* child : node.children) {
+                    children_expansions.push_back(
+                            &(static_cast<FmmNode*>(child)->multipole_expansion)
+                    ); 
+                }
+                node.multipole_expansion = ME(node.center, children_expansions); 
             }
-
-            node.multipole_expansion = ME(node.center, children_expansions); 
         }
     }
     
     // Downward pass: Convert multipole expansions to local expansions
     for(std::size_t depth = 2; depth < this->height; ++depth) {
-
         std::size_t n_nodes_at_depth = std::pow(AOT::n_children, depth); 
         std::size_t offset = (std::pow(AOT::n_children, depth) - 1) 
             / (AOT::n_children - 1);
 
-        #pragma omp parallel for
-        for(std::size_t i = 0; i < n_nodes_at_depth; i++) {
-
-            FmmNode& current_node = nodes[offset + i]; 
-
-            this->localToLocal(current_node);
-            this->multipoleToLocal(current_node);
+        #pragma omp parallel 
+        {
+            #pragma omp for schedule(static)
+            for(std::size_t i = 0; i < n_nodes_at_depth; i++) {
+                FmmNode& current_node = nodes[offset + i]; 
+                this->localToLocal(current_node);
+                this->multipoleToLocal(current_node);
+            }
         }
     }
 
-    #pragma omp parallel for 
-    for(std::size_t leaf_index = 0; leaf_index < n_leaves; ++leaf_index) {
-
-        FmmNode& current_node = leaves[leaf_index]; 
-
-        this->localToLocal(current_node);
-        this->multipoleToLocal(current_node);
+    #pragma omp parallel 
+    {
+        #pragma omp for schedule(static)
+        for(std::size_t leaf_index = 0; leaf_index < n_leaves; ++leaf_index) {
+            FmmNode& current_node = leaves[leaf_index]; 
+            this->localToLocal(current_node);
+            this->multipoleToLocal(current_node);
+        }
     }
 }
 

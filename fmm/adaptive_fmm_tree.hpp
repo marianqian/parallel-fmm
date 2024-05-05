@@ -154,11 +154,15 @@ AdaptiveFmmTree<d, field_type>::AdaptiveFmmTree(std::vector<PointSource>& source
     // one loop to parallelize.
     
     for(std::vector<FmmLeaf*>& level : this->leaves) { 
-        #pragma omp parallel for 
-        for(unsigned j = 0; j < level.size(); ++j) {
-            FmmLeaf* leaf = level[j];  
-            leaf->multipole_expansion = ME(leaf->center, this->order, leaf->sources);
+        #pragma omp parallel
+        {
+            #pragma omp for schedule(static)
+            for(unsigned j = 0; j < level.size(); ++j) {
+                FmmLeaf* leaf = level[j];  
+                leaf->multipole_expansion = ME(leaf->center, this->order, leaf->sources);
+            }
         }
+        
     }
 
     assert(this->height == this->nodes.size()); 
@@ -168,20 +172,24 @@ AdaptiveFmmTree<d, field_type>::AdaptiveFmmTree(std::vector<PointSource>& source
 
         std::vector<FmmNode*>& node_level = this->nodes[i]; 
 
-        #pragma omp parallel for 
-        for(unsigned j = 0; j < node_level.size(); ++j) {
+        #pragma omp parallel
+        {
+            #pragma omp for schedule(static)
+            for(unsigned j = 0; j < node_level.size(); ++j) {
 
-            FmmNode* node = node_level[j]; 
-            std::vector<const ME*> children_expansions;
+                FmmNode* node = node_level[j]; 
+                std::vector<const ME*> children_expansions;
 
-            for(BaseNode* child : node->children) {
-                children_expansions.push_back(
-                    &(static_cast<FmmNode*>(child)->multipole_expansion)
-                ); 
+                for(BaseNode* child : node->children) {
+                    children_expansions.push_back(
+                        &(static_cast<FmmNode*>(child)->multipole_expansion)
+                    ); 
+                }
+
+                node->multipole_expansion = ME(node->center, children_expansions); 
             }
-
-            node->multipole_expansion = ME(node->center, children_expansions); 
         }
+        
     }
     
     // Downward pass: Convert multipole expansions to local expansions, shift 
@@ -211,11 +219,13 @@ AdaptiveFmmTree<d, field_type>::AdaptiveFmmTree(std::vector<PointSource>& source
     }
 
     std::vector<FmmLeaf*>& final_level = this->leaves.at(this->height); 
-    #pragma omp parallel for schedule(dynamic)
-    for(std::size_t i = 0; i < final_level.size(); ++i) {
-
-        FmmNode& node = *final_level[i]; 
-        constructLocalExpansion(node); 
+    #pragma omp parallel
+    {
+        #pragma omp for schedule(dynamic)
+        for(std::size_t i = 0; i < final_level.size(); ++i) {
+            FmmNode& node = *final_level[i]; 
+            constructLocalExpansion(node); 
+        }
     }
 }
 

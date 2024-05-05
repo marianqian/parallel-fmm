@@ -64,11 +64,15 @@ std::vector<double> AbstractFmmTree<d, field_type>::
         evaluateParticlePotentialEnergies() const {
 
     std::vector<double> potentials(sources.size()); 
-    #pragma omp parallel for schedule(dynamic)
-    for(std::size_t i = 0; i < sources.size(); ++i) {
-        potentials[i] = sources[i].sourceStrength() 
-            * evaluatePotential(sources[i].position);
+    #pragma omp parallel 
+    {
+        #pragma omp for schedule(dynamic)
+        for(std::size_t i = 0; i < sources.size(); ++i) {
+            potentials[i] = sources[i].sourceStrength() 
+                * evaluatePotential(sources[i].position);
+        }
     }
+    
 
     return potentials; 
 }
@@ -79,10 +83,13 @@ std::vector<Vector_<d>> AbstractFmmTree<d, field_type>::
 
     std::vector<Vector> forces(sources.size()); 
 
-    #pragma omp parallel for schedule(dynamic)
-    for(std::size_t i = 0; i < sources.size(); ++i) {
-        forces[i] = sources[i].sourceStrength() 
-            * evaluateForcefield(sources[i].position);
+    #pragma omp parallel
+    {
+        #pragma omp for schedule(dynamic)
+        for(std::size_t i = 0; i < sources.size(); ++i) {
+            forces[i] = sources[i].sourceStrength() 
+                * evaluateForcefield(sources[i].position);
+        }
     }
     
     return forces; 
