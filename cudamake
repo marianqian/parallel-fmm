@@ -1,0 +1,67 @@
+CXX = g++-9
+EXT = cpp
+DEBUGFLAGS = -g -ggdb -O3 -ffast-math #-fno-inline
+OFLAGS = -O3 -ffast-math -fopenmp
+LIBS = -I /afs/andrew.cmu.edu/usr7/marianq/private/project/parallel-fmm/gsl/include -L /afs/andrew.cmu.edu/usr7/marianq/private/project/parallel-fmm/gsl/lib -lstdc++fs -lgsl -lgslcblas 
+CXXFLAGS = -O3 -Wall -Wno-unknown-pragmas -fno-builtin -std=c++17 -pedantic
+LDFLAGS=-L/usr/local/cuda-11.7/lib64/ -lcudart
+NVCC=nvcc
+NVCCFLAGS=-O3 -m64 --gpu-architecture compute_61 -ccbin /usr/bin/gcc
+CU_FILES   = cudaFMM.cu
+CC_FILES = test/fmm_tree.cpp 
+EXECUTABLE = test/fmm_tree_cuda 
+
+# TARGET = examples/minimal
+TARGET = test/fmm_tree
+
+OBJDIR=objs
+OBJS=$(OBJDIR)/fmm_tree.o $(OBJDIR)/cudaFMM.o 
+
+DEPENDS = makefile abstract_orthtree.hpp balanced_orthtree.hpp \
+		   vector.hpp abstract_fmm_tree.hpp balanced_fmm_tree.hpp series_expansion.hpp \
+		  multipole_expansion.hpp local_expansion.hpp \
+		  adaptive_fmm_tree.hpp fmm_general.hpp fields.hpp 
+
+all: $(EXECUTABLE)
+dirs: 
+	mkdir -p $(OBJDIR)/
+
+#$(TARGET): $(DEPENDS) dirs $(OBJS) #link
+#	$(CXX) $(CXXFLAGS) $(OFLAGS) $(TARGET).$(EXT) -o $(TARGET) $(LIBS) $(OBJS) $(LDFLAGS)
+
+$(EXECUTABLE): $(DEPENDS) dirs $(OBJS)
+		$(CXX) $(CXXFLAGS) $(OFLAGS) -o $@ $(LIBS) $(OBJS) $(LDFLAGS)
+
+$(OBJDIR)/fmm_tree.o: test/fmm_tree.cpp
+		$(CXX) $< $(CXXFLAGS) -c -o $@ $(LIBS)
+
+$(OBJDIR)/cudaFMM.o: cudaFMM.cu
+		$(NVCC) $< $(NVCCFLAGS) -c -o $@ $(LIBS)
+
+
+
+
+
+debug: 
+	$(CXX) $(CXXFLAGS) $(DEBUGFLAGS) $(TARGET).$(EXT) -o $(TARGET) $(LIBS) $(LDFLAGS)
+
+run: all
+	./$(TARGET) 
+
+valgrind: debug
+	valgrind --leak-check=full --track-origins=yes ./$(TARGET) 
+
+callgrind: debug
+	valgrind --tool=callgrind --dump-instr=yes --collect-jumps=yes \
+		--collect-atstart=no --callgrind-out-file=./callgrind.out ./$(TARGET) 
+	kcachegrind callgrind.out & 
+
+perf: all
+	perf stat -r 10 ./$(TARGET)
+
+clean:
+	rm -f *.o $(TARGET) logs/*.dat *.out *.dat
+
+
+
+
