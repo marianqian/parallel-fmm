@@ -22,7 +22,7 @@ using namespace fmm::fields;
 
 int main(int argc, char *argv[]) {
 
-    size_t N = ceil(1.5*pow(10,5));
+    size_t N = ceil(10*pow(10,4));
     const size_t items_per_leaf = 2000;
     const size_t d = 3;
     const double eps = 1E-3; 
@@ -32,9 +32,9 @@ int main(int argc, char *argv[]) {
     #define adaptive false
     const bool uniform = true; 
     const bool from_file = false; 
-    const bool accuracy_check = true; 
+    const bool accuracy_check = false; 
     const bool tree_to_file = false; 
-    const bool field_type = true;  // true for gravitational
+    const bool field_type = false;  // true for gravitational
 
     const size_t seed = 42; 
     srand(seed); 
@@ -133,48 +133,48 @@ int main(int argc, char *argv[]) {
         std::cout << "fmm force computation: " 
             << chrono_duration(t2-t1) << "s" << std::endl; 
 
-        // std::vector<double> diffs(N); 
-        // std::vector<double> force_diffs(N);  
+        std::vector<double> diffs(N); 
+        std::vector<double> force_diffs(N);  
 
-        // t1 = std::chrono::high_resolution_clock::now();
-        // std::vector<double> ref_potentials
-        //     = particlePotentialEnergies<d, field_type>(sources); 
-        // t2 = std::chrono::high_resolution_clock::now();
-        // double t_pot_dir = chrono_duration(t2-t1); 
+        t1 = std::chrono::high_resolution_clock::now();
+        std::vector<double> ref_potentials
+            = particlePotentialEnergies<d, field_type>(sources); 
+        t2 = std::chrono::high_resolution_clock::now();
+        double t_pot_dir = chrono_duration(t2-t1); 
 
-        // t1 = std::chrono::high_resolution_clock::now();
-        // std::vector<Vec> ref_forces 
-        //     = particleForces<d, field_type>(sources, force_smoothing_eps); 
-        // t2 = std::chrono::high_resolution_clock::now();
-        // double t_frc_dir = chrono_duration(t2-t1); 
+        t1 = std::chrono::high_resolution_clock::now();
+        std::vector<Vec> ref_forces 
+            = particleForces<d, field_type>(sources, force_smoothing_eps); 
+        t2 = std::chrono::high_resolution_clock::now();
+        double t_frc_dir = chrono_duration(t2-t1); 
 
-        // std::transform (
-        //         potentials.begin(), potentials.end(), ref_potentials.begin(), 
-        //         diffs.begin(), [](double a, double b) -> double 
-        //         { return std::abs(((a-b)/b)); } 
-        //         );
+        std::transform (
+                potentials.begin(), potentials.end(), ref_potentials.begin(), 
+                diffs.begin(), [](double a, double b) -> double 
+                { return std::abs(((a-b)/b)); } 
+                );
 
 
-        // std::transform (
-        //         forces.begin(), forces.end(), ref_forces.begin(), 
-        //         force_diffs.begin(), [](Vec a, Vec b) -> double 
-        //         { return (a-b).norm()/b.norm(); } 
-        //         );
+        std::transform (
+                forces.begin(), forces.end(), ref_forces.begin(), 
+                force_diffs.begin(), [](Vec a, Vec b) -> double 
+                { return (a-b).norm()/b.norm(); } 
+                );
 
-        // std::cout << "direct potential computation: " 
-        //     << t_pot_dir << "s" << std::endl; 
-        // std::cout << "direct force computation: " 
-        //     << t_frc_dir << "s" << std::endl; 
-        // std::cout << "Mean relative potential deviation: " << 
-        //     std::accumulate(diffs.begin(), diffs.end(), 0.0)/diffs.size() 
-        //     << std::endl;
-        // std::cout << "Max relative potential deviation: " << 
-        //     *std::max_element(diffs.begin(), diffs.end()) << std::endl;
-        // std::cout << "Mean relative force deviation: " << 
-        //     std::accumulate(force_diffs.begin(), force_diffs.end(), 0.0)
-        //     / force_diffs.size() << std::endl;
-        // std::cout << "Max relative force deviation: " << 
-        //     *std::max_element(force_diffs.begin(), force_diffs.end()) << std::endl;
+        std::cout << "direct potential computation: " 
+            << t_pot_dir << "s" << std::endl; 
+        std::cout << "direct force computation: " 
+            << t_frc_dir << "s" << std::endl; 
+        std::cout << "Mean relative potential deviation: " << 
+            std::accumulate(diffs.begin(), diffs.end(), 0.0)/diffs.size() 
+            << std::endl;
+        std::cout << "Max relative potential deviation: " << 
+            *std::max_element(diffs.begin(), diffs.end()) << std::endl;
+        std::cout << "Mean relative force deviation: " << 
+            std::accumulate(force_diffs.begin(), force_diffs.end(), 0.0)
+            / force_diffs.size() << std::endl;
+        std::cout << "Max relative force deviation: " << 
+            *std::max_element(force_diffs.begin(), force_diffs.end()) << std::endl;
 
 
 
